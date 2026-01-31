@@ -9,7 +9,7 @@ import pandas as pd
 # =========================
 EXCEL_PATH = "URDU DATASET.xlsx"
 IMAGE_FOLDER = "VQA_RAD Image Folder"
-CSV_PATH = "doctor_feedback.csv"
+CSV_PATH = "doctor_feedback.txt"
 
 st.set_page_config(page_title="Medical VQA", layout="wide")
 
@@ -189,4 +189,3 @@ with col2:
                 st.rerun()
             else:
                 st.success("Submission Complete!")
-
