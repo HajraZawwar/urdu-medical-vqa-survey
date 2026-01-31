@@ -142,7 +142,7 @@ with st.sidebar:
 col1, col2 = st.columns([0.8, 1.2], gap="large")
 
 with col1:
-    st.image(row["image_path"], width=150)
+    st.image(row["image_path"], width=250)
     st.caption(f"Ref: {row['IMAGEID']}")
 
 with col2:
@@ -189,5 +189,6 @@ with col2:
                 st.rerun()
             else:
                 st.success("Submission Complete!")
+
 
 
