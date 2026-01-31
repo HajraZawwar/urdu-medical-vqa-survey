@@ -91,7 +91,7 @@ df_view = st.session_state.df_view
 row = df_view.iloc[st.session_state.idx]
 
 # =========================
-# CSV INIT (🔥 EXCEL FIX 🔥)
+# CSV INIT 
 # =========================
 if not os.path.exists(CSV_PATH):
     with open(CSV_PATH, "w", newline="", encoding="utf-8-sig") as f:
@@ -108,7 +108,7 @@ if not os.path.exists(CSV_PATH):
         ])
 
 # =========================
-# SAVE FUNCTION (🔥 EXCEL FIX 🔥)
+# SAVE FUNCTION 
 # =========================
 def save_feedback(row, edited_question, edited_answer):
     with open(CSV_PATH, "a", newline="", encoding="utf-8-sig") as f:
@@ -137,12 +137,12 @@ with st.sidebar:
     st.markdown(f"<div style='font-size:20px;'>{row['IMAGEORGAN_urdu']}</div>", unsafe_allow_html=True)
 
 # =========================
-# MAIN LAYOUT (UNCHANGED)
+# MAIN LAYOUT
 # =========================
 col1, col2 = st.columns([0.8, 1.2], gap="large")
 
 with col1:
-    st.image(row["image_path"], width=350)
+    st.image(row["image_path"], width=250)
     st.caption(f"Ref: {row['IMAGEID']}")
 
 with col2:
@@ -189,3 +189,4 @@ with col2:
                 st.rerun()
             else:
                 st.success("Submission Complete!")
+
