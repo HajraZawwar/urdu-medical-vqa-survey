@@ -5,154 +5,188 @@ import streamlit as st
 import pandas as pd
 
 # =========================
-# CONFIGURATION
+# CONFIG & SETTINGS
 # =========================
 EXCEL_PATH = "URDU DATASET.xlsx"
 IMAGE_FOLDER = "VQA_RAD Image Folder"
 CSV_PATH = "doctor_feedback.csv"
 
-st.set_page_config(layout="wide")
-st.title("Doctor-in-the-Loop Urdu Medical VQA Validation")
+st.set_page_config(page_title="Medical VQA", layout="wide")
 
 # =========================
-# LOAD EXCEL
+# REFINED CSS (UNCHANGED)
 # =========================
-df = pd.read_excel(EXCEL_PATH)
-
-required_cols = ["QID_unique", "IMAGEID", "IMAGEORGAN", "QUESTION", "ANSWER"]
-missing_cols = [c for c in required_cols if c not in df.columns]
-
-if missing_cols:
-    st.error(f"Missing required columns in Excel: {missing_cols}")
-    st.stop()
-
-df = df.dropna(subset=required_cols).copy()
+st.markdown("""
+<style>
+    section[data-testid="stSidebar"] {
+        width: 240px !important;
+        background-color: #f1f3f6;
+    }
+    .main .block-container {
+        padding-top: 1.5rem;
+    }
+    .en-label {
+        color: #777;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 2px;
+    }
+    .en-content {
+        font-size: 1rem;
+        font-weight: 500;
+        color: #111;
+        margin-bottom: 8px;
+    }
+    .stTextArea textarea {
+        font-family: 'NafeesNastaleeq', 'Arial', serif !important;
+        font-size: 22px !important; 
+        line-height: 1.5 !important;
+        direction: rtl;
+        background-color: #ffffff !important;
+        border: 1px solid #ccd0d5 !important;
+        padding: 8px !important;
+        resize: none;
+    }
+    div.stButton > button {
+        height: 40px;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # =========================
-# BUILD IMAGE LOOKUP (LOCAL)
+# LOAD DATA
 # =========================
-image_map = {}
-for file in os.listdir(IMAGE_FOLDER):
-    if file.lower().endswith((".jpg", ".jpeg", ".png")):
-        image_map[file] = os.path.join(IMAGE_FOLDER, file)
+@st.cache_data
+def load_data():
+    df = pd.read_excel(EXCEL_PATH)
+    image_map = {
+        f: os.path.join(IMAGE_FOLDER, f)
+        for f in os.listdir(IMAGE_FOLDER)
+        if f.lower().endswith((".jpg", ".png", ".jpeg"))
+    }
+    df["image_path"] = df["IMAGEID"].astype(str).apply(
+        lambda x: image_map.get(os.path.basename(x))
+    )
+    return df.dropna(subset=["image_path"]).reset_index(drop=True)
+
+df = load_data()
 
 # =========================
-# EXTRACT IMAGE FILE FROM URL
+# SESSION STATE
 # =========================
-df["image_file"] = df["IMAGEID"].astype(str).apply(
-    lambda x: os.path.basename(x)
-)
+if "idx" not in st.session_state:
+    st.session_state.idx = 0
+    st.session_state.df_view = df.sample(
+        n=min(15, len(df)), random_state=42
+    ).reset_index(drop=True)
 
-df["image_path"] = df["image_file"].map(image_map)
+if "edited_q" not in st.session_state:
+    st.session_state.edited_q = {}
+if "edited_a" not in st.session_state:
+    st.session_state.edited_a = {}
 
-# Drop rows where image not found locally
-df = df.dropna(subset=["image_path"]).reset_index(drop=True)
+df_view = st.session_state.df_view
+row = df_view.iloc[st.session_state.idx]
 
 # =========================
-# SELECT 15 QUESTIONS ONLY
-# =========================
-df_view = df.sample(n=min(15, len(df)), random_state=42).reset_index(drop=True)
-
-# =========================
-# INITIALIZE CSV (IF NEEDED)
+# CSV INIT (🔥 EXCEL FIX 🔥)
 # =========================
 if not os.path.exists(CSV_PATH):
-    with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
+    with open(CSV_PATH, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow([
-            "QID_unique",
-            "image_file",
+            "QID_linked",
+            "IMAGEID",
             "IMAGEORGAN",
-            "ORIGINAL_QUESTION",
-            "ORIGINAL_ANSWER",
-            "VERDICT",
-            "CORRECTED_QUESTION",
-            "CORRECTED_ANSWER",
+            "QUESTION_urdu",
+            "ANSWER_urdu",
+            "FINAL_QUESTION_urdu",
+            "FINAL_ANSWER_urdu",
             "TIMESTAMP"
         ])
 
 # =========================
-# UI — SELECT QUESTION
+# SAVE FUNCTION (🔥 EXCEL FIX 🔥)
 # =========================
-st.write(f"Total questions for review: {len(df_view)}")
-
-idx = st.number_input(
-    "Select question number",
-    min_value=1,
-    max_value=len(df_view),
-    step=1
-) - 1
-
-row = df_view.iloc[idx]
-
-# =========================
-# DISPLAY IMAGE + DATA
-# =========================
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    st.subheader("Medical Image")
-    st.image(row["image_path"], use_container_width=True)
-    st.caption(row["image_file"])
-
-with col2:
-    st.subheader("Organ")
-    st.write(row["IMAGEORGAN"])
-
-    st.subheader("Urdu Question")
-    st.write(row["QUESTION"])
-
-    st.subheader("Urdu Answer (Model Output)")
-    st.write(row["ANSWER"])
-
-# =========================
-# VALIDATION SECTION
-# =========================
-st.markdown("---")
-st.subheader("Doctor Validation")
-
-verdict = st.radio(
-    "Is the Question & Answer correct?",
-    ["Correct", "Incorrect"]
-)
-
-# Defaults (used if Correct)
-corrected_question = row["QUESTION"]
-corrected_answer = row["ANSWER"]
-
-if verdict == "Incorrect":
-    st.markdown("### ✍️ Correct the Urdu Question")
-    corrected_question = st.text_area(
-        "Edited Question:",
-        value=row["QUESTION"],
-        height=100
-    )
-
-    st.markdown("### ✍️ Correct the Urdu Answer")
-    corrected_answer = st.text_area(
-        "Edited Answer:",
-        value=row["ANSWER"],
-        height=100
-    )
-
-# =========================
-# SAVE FEEDBACK
-# =========================
-if st.button("Submit Feedback"):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
+def save_feedback(row, edited_question, edited_answer):
+    with open(CSV_PATH, "a", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow([
-            row["QID_unique"],
-            row["image_file"],
+            row["QID_linked"],
+            row["IMAGEID"],
             row["IMAGEORGAN"],
-            row["QUESTION"],
-            row["ANSWER"],
-            verdict,
-            corrected_question if verdict == "Incorrect" else "",
-            corrected_answer if verdict == "Incorrect" else "",
-            timestamp
+            row["QUESTION_urdu"],
+            row["ANSWER_urdu"],
+            edited_question,
+            edited_answer,
+            datetime.now().strftime("%d-%m-%Y %H:%M")
         ])
 
-    st.success("Doctor feedback saved successfully!")
+# =========================
+# SIDEBAR (UNCHANGED)
+# =========================
+with st.sidebar:
+    st.markdown("### 📋 Progress")
+    st.progress((st.session_state.idx + 1) / len(df_view))
+    st.write(f"Sample {st.session_state.idx + 1} of {len(df_view)}")
+    st.divider()
+    st.caption("Organ Focus")
+    st.markdown(f"**{row['IMAGEORGAN']}**")
+    st.markdown(f"<div style='font-size:20px;'>{row['IMAGEORGAN_urdu']}</div>", unsafe_allow_html=True)
+
+# =========================
+# MAIN LAYOUT (UNCHANGED)
+# =========================
+col1, col2 = st.columns([0.8, 1.2], gap="large")
+
+with col1:
+    st.image(row["image_path"], width=350)
+    st.caption(f"Ref: {row['IMAGEID']}")
+
+with col2:
+    st.markdown('<p class="en-label">English Question</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="en-content">{row["QUESTION"]}</p>', unsafe_allow_html=True)
+
+    edited_question = st.text_area(
+        label="Urdu Q",
+        value=st.session_state.edited_q.get(row["QID_linked"], row["QUESTION_urdu"]),
+        height=100,
+        key=f"q_{st.session_state.idx}",
+        label_visibility="collapsed"
+    )
+
+    st.markdown('<p class="en-label">English Answer</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="en-content">{row["ANSWER"]}</p>', unsafe_allow_html=True)
+
+    edited_answer = st.text_area(
+        label="Urdu A",
+        value=st.session_state.edited_a.get(row["QID_linked"], row["ANSWER_urdu"]),
+        height=70,
+        key=f"a_{st.session_state.idx}",
+        label_visibility="collapsed"
+    )
+
+    nav1, nav2 = st.columns(2)
+
+    with nav1:
+        if st.button("⬅ Back", disabled=st.session_state.idx == 0):
+            st.session_state.edited_q[row["QID_linked"]] = edited_question
+            st.session_state.edited_a[row["QID_linked"]] = edited_answer
+            save_feedback(row, edited_question, edited_answer)
+            st.session_state.idx -= 1
+            st.rerun()
+
+    with nav2:
+        is_last = st.session_state.idx == len(df_view) - 1
+        if st.button("Next ➡" if not is_last else "Finish", type="primary"):
+            st.session_state.edited_q[row["QID_linked"]] = edited_question
+            st.session_state.edited_a[row["QID_linked"]] = edited_answer
+            save_feedback(row, edited_question, edited_answer)
+            if not is_last:
+                st.session_state.idx += 1
+                st.rerun()
+            else:
+                st.success("Submission Complete!")
+
